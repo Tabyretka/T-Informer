@@ -1,4 +1,4 @@
-import aiohttp, aioschedule, asyncio
+import aiohttp, aioschedule, asyncio, os
 from aiogram import Bot, executor, Dispatcher, types
 from data import db_session
 from data.users import User
@@ -95,5 +95,7 @@ async def on_startup(_):
 
 
 if __name__ == "__main__":
+    if not os.path.exists("db"):
+        os.mkdir("db")
     db_session.global_init("db/db.sqlite")
     executor.start_polling(dp, on_startup=on_startup)
