@@ -50,7 +50,7 @@ async def other_messages(message: types.Message):
         db_sess = db_session.create_session()
         user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
         url = user.urls
-        if url is not None:
+        if url is not None and url != "":
             async with aiohttp.ClientSession() as session:
                 res = await parse(session=session, url=url.strip())
                 if res[0] != "ERROR":
@@ -81,7 +81,7 @@ async def check_titles():
     users = db_sess.query(User).all()
     async with aiohttp.ClientSession() as session:
         for user in users:
-            if user.urls != "":
+            if user.urls is not None and user.urls != "":
                 res = await parse(session=session, url=user.urls.strip())
                 if res[0] != "ERROR":
                     await bot.send_message(user.telegram_id, f"{res[0]}\n{res[1]}")
