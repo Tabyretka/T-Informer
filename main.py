@@ -1,9 +1,8 @@
 import aiohttp, aioschedule, asyncio, os
 from aiogram import Bot, executor, Dispatcher, types
-from data import db_session
+from data import db_session, markups as nav
 from data.users import User
-from dateparser import parse
-import markups as nav
+from data.dateparser import parse
 from config import TOKEN
 
 bot = Bot(token=TOKEN)
@@ -12,7 +11,7 @@ dp = Dispatcher(bot)
 
 @dp.message_handler(commands=["start"])
 async def command_start(message: types.Message):
-    start_message = """Использование:\n/add ссылка_на_тайтл_с_animego - изменит текущий отслеживаемый тайтл.
+    start_message = """Использование:\nДля изменения отслеживаемого тайтла просто пришлите ссылку.
     
 Проверка выхода новых серий происходит каждый день в 09:00 и 21:00"""
     db_sess = db_session.create_session()
@@ -26,9 +25,8 @@ async def command_start(message: types.Message):
                            reply_markup=nav.mainMenu)
 
 
-@dp.message_handler(lambda message: message.text.startswith('/add'))
 async def add_url(message: types.Message):
-    url = message.text[4:]
+    url = message.text
     if url != "":
         async with aiohttp.ClientSession() as session:
             res = await parse(session=session, url=url.strip())
@@ -50,17 +48,30 @@ async def add_url(message: types.Message):
 async def other_messages(message: types.Message):
     if message.text == "Отслеживаемый тайтл":
         db_sess = db_session.create_session()
-        url = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first().urls
-        async with aiohttp.ClientSession() as session:
-            res = await parse(session=session, url=url.strip())
-            db_sess.close()
-            await message.answer(f"Отслеживаемый тайтл:\n{res[0]}\n{res[1]}\n{url}")
+        user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
+        url = user.urls
+        if url is not None:
+            async with aiohttp.ClientSession() as session:
+                res = await parse(session=session, url=url.strip())
+                if res[0] != "ERROR":
+                    db_sess.close()
+                    await message.answer(f"Отслеживаемый тайтл:\n{res[0]}\n{res[1]}\n{url}")
+                else:
+                    user.urls = ""
+                    db_sess.commit()
+                    await bot.send_message(user.telegram_id,
+                                           f"Не удалось получить информацию о новых сериях, возможно, сезон закончился. Тайтл снят с отслеживаняи.")
+        else:
+            await bot.send_message(message.from_user.id, "У вас еще нет тайтла на отслеживании!")
+        db_sess.close()
     elif message.text == "Профиль":
         db_sess = db_session.create_session()
         user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
         await message.answer(
             f"{message.from_user.first_name}\nid в базе: {user.id}\nОтслеживаемый тайт: {user.urls}\nДобавлен в базу: {user.created_date}")
         db_sess.close()
+    elif "animego.org" in message.text.strip():
+        await add_url(message)
     else:
         await message.answer("Прости, но я не понимаю.")
 
