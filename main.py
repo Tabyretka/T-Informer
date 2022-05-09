@@ -1,12 +1,23 @@
 import aiohttp, aioschedule, asyncio, os
 from aiogram import Bot, executor, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters import Text
 from data import db_session, markups as nav
 from data.users import User
 from data.dateparser import parse
+from data import series_parser
+from data.states import AniStates
 from config import TOKEN
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+
+
+async def shutdown(dp):
+    await storage.close()
+    await bot.close()
 
 
 @dp.message_handler(commands=["start"])
@@ -25,6 +36,81 @@ async def command_start(message: types.Message):
                            reply_markup=nav.mainMenu)
 
 
+@dp.message_handler(commands=["ani"], state=None)
+@dp.message_handler(Text(equals='Получить ссылку на серию', ignore_case=True), state=None)
+async def test(message: types.Message):
+    await message.answer("Пришлите название тайтла", reply_markup=nav.supMenu)
+    await AniStates.name.set()
+
+
+@dp.message_handler(state='*', commands='cancel')
+@dp.message_handler(Text(equals='отмена', ignore_case=True), state='*')
+async def cancel_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is None:
+        return
+    await state.finish()
+    await message.reply('Действие отменено')
+
+
+@dp.message_handler(state=AniStates.name)
+async def test2(message: types.Message, state: FSMContext):
+    name = message.text
+    res = series_parser.search(name)
+    mes = ""
+    if res is None:
+        await state.finish()
+        await message.answer("Результаты не найдены", reply_markup=nav.mainMenu)
+        return
+    for i in enumerate(res):
+        mes += f"{i[0] + 1}. {i[1]}\n"
+    await state.update_data({"res": res})
+    await message.answer(f"{mes}\nПришлите порядковый номер требуемого аниме", reply_markup=nav.supMenu)
+    await AniStates.next()
+
+
+@dp.message_handler(state=AniStates.chooseRes)
+async def chooseRes(message: types.Message, state: FSMContext):
+    num = int(message.text) - 1
+    data = await state.get_data()
+    res = data.get("res")
+    episodes = series_parser.get_episodes(res, num)
+    mes = ""
+    for i in enumerate(episodes):
+        mes += f"{i[0] + 1}. {i[1]}\n"
+    await state.update_data({"episodes": episodes})
+    await message.answer(f"{mes}\nПришлите порядковый номер требуемой серии", reply_markup=nav.supMenu)
+    await AniStates.next()
+
+
+@dp.message_handler(state=AniStates.episode)
+async def test2(message: types.Message, state: FSMContext):
+    num = int(message.text) - 1
+    data = await state.get_data()
+    episodes = data.get("episodes")
+    players = series_parser.get_players(episodes, num)
+    mes = ""
+    for i in enumerate(players):
+        mes += f"{i[0] + 1}. {i[1]}\n"
+    await state.update_data({"players": players})
+    await message.answer(f"{mes}\nПришлите порядковый номер требуемого плеера", reply_markup=nav.supMenu)
+    await AniStates.next()
+
+
+@dp.message_handler(state=AniStates.player)
+async def test3(message: types.Message, state: FSMContext):
+    num = int(message.text) - 1
+    data = await state.get_data()
+    players = data.get("players")
+    url = series_parser.get_url(players, num)
+    headers = {"Referer": "https://aniboom.one", "Accept-Language": "ru-RU",
+               "User-Agent": "Mozilla/5.0 (Macintosh; PPC Mac OS X 10_6_7 rv:6.0) Gecko/20170115 Firefox/35.0"}
+    await message.answer(
+        f"Для воспроизведения видео с AniBoom необходимо указать следующие заголовки:\n\n{headers}\n\n{url}",
+        reply_markup=nav.mainMenu)
+    await state.finish()
+
+
 async def add_url(message: types.Message):
     url = message.text
     if url != "":
@@ -36,12 +122,12 @@ async def add_url(message: types.Message):
                 user.urls = url
                 db_sess.commit()
                 db_sess.close()
-                await message.answer(f"Успешно добавлено!\n\n{res[0]}\n{res[1]}")
+                await message.answer(f"Успешно добавлено!\n\n{res[0]}\n{res[1]}", reply_markup=nav.mainMenu)
             else:
-                await message.answer("Проверьте ссылку! Возможно, сезон уже закончился.")
+                await message.answer("Проверьте ссылку! Возможно, сезон уже закончился.", reply_markup=nav.mainMenu)
 
     else:
-        await message.answer("Вы не указали ссылку!")
+        await message.answer("Вы не указали ссылку!", reply_markup=nav.mainMenu)
 
 
 @dp.message_handler()
@@ -55,14 +141,16 @@ async def other_messages(message: types.Message):
                 res = await parse(session=session, url=url.strip())
                 if res[0] != "ERROR":
                     db_sess.close()
-                    await message.answer(f"Отслеживаемый тайтл:\n{res[0]}\n{res[1]}\n{url}")
+                    await message.answer(f"Отслеживаемый тайтл:\n{res[0]}\n{res[1]}\n{url}", reply_markup=nav.mainMenu)
                 else:
                     user.urls = ""
                     db_sess.commit()
                     await bot.send_message(user.telegram_id,
-                                           f"Не удалось получить информацию о новых сериях, возможно, сезон закончился. Тайтл снят с отслеживаняи.")
+                                           f"Не удалось получить информацию о новых сериях, возможно, сезон закончился. Тайтл снят с отслеживаняи.",
+                                           reply_markup=nav.mainMenu)
         else:
-            await bot.send_message(message.from_user.id, "У вас еще нет тайтла на отслеживании!")
+            await bot.send_message(message.from_user.id, "У вас еще нет тайтла на отслеживании!",
+                                   reply_markup=nav.mainMenu)
         db_sess.close()
     elif message.text == "Профиль":
         db_sess = db_session.create_session()
@@ -73,7 +161,7 @@ async def other_messages(message: types.Message):
     elif "animego.org" in message.text.strip():
         await add_url(message)
     else:
-        await message.answer("Прости, но я не понимаю.")
+        await message.answer("Прости, но я не понимаю.", reply_markup=nav.mainMenu)
 
 
 async def check_titles():
@@ -89,7 +177,8 @@ async def check_titles():
                     user.urls = ""
                     db_sess.commit()
                     await bot.send_message(user.telegram_id,
-                                           f"Не удалось получить информацию о новых сериях, возможно, сезон закончился. Тайтл снят с отслеживаняи.")
+                                           f"Не удалось получить информацию о новых сериях, возможно, сезон закончился. Тайтл снят с отслеживаняи.",
+                                           reply_markup=nav.mainMenu)
     db_sess.close()
 
 
@@ -109,4 +198,4 @@ if __name__ == "__main__":
     if not os.path.exists("db"):
         os.mkdir("db")
     db_session.global_init("db/db.sqlite")
-    executor.start_polling(dp, on_startup=on_startup)
+    executor.start_polling(dp, on_startup=on_startup, on_shutdown=shutdown)

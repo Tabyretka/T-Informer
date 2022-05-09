@@ -5,3 +5,4 @@ asyncio
 aiogram
 bs4
 lxml
+anicli-ru
