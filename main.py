@@ -78,8 +78,10 @@ async def chooseRes(message: types.Message, state: FSMContext):
     mes = ""
     for i in enumerate(episodes):
         mes += f"{i[0] + 1}. {i[1]}\n"
+    l = [mes[i:i + 1000] for i in range(0, len(mes), 1000)]
     await state.update_data({"episodes": episodes})
-    await message.answer(f"{mes}\nПришлите порядковый номер требуемой серии", reply_markup=nav.supMenu)
+    for i in l:
+        await message.answer(f"{i}\nПришлите порядковый номер требуемой серии", reply_markup=nav.supMenu)
     await AniStates.next()
 
 
@@ -89,12 +91,16 @@ async def test2(message: types.Message, state: FSMContext):
     data = await state.get_data()
     episodes = data.get("episodes")
     players = series_parser.get_players(episodes, num)
-    mes = ""
-    for i in enumerate(players):
-        mes += f"{i[0] + 1}. {i[1]}\n"
-    await state.update_data({"players": players})
-    await message.answer(f"{mes}\nПришлите порядковый номер требуемого плеера", reply_markup=nav.supMenu)
-    await AniStates.next()
+    if players:
+        mes = ""
+        for i in enumerate(players):
+            mes += f"{i[0] + 1}. {i[1]}\n"
+        await state.update_data({"players": players})
+        await message.answer(f"{mes}\nПришлите порядковый номер требуемого плеера", reply_markup=nav.supMenu)
+        await AniStates.next()
+    else:
+        await message.answer("Озвучка не найдена, возможно, серия еще не вышла.", reply_markup=nav.mainMenu)
+        await state.finish()
 
 
 @dp.message_handler(state=AniStates.player)
