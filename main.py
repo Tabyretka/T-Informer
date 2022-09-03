@@ -22,7 +22,9 @@ async def shutdown(dp):
 
 @dp.message_handler(commands=["start"])
 async def command_start(message: types.Message):
-    start_message = """Использование:\nДля изменения отслеживаемого тайтла просто пришлите ссылку.
+    img = open("img/start.png", "rb")
+
+    start_message = """Использование:\nДля изменения отслеживаемого тайтла пришлите ссылку (прим. см. фото).
     
 Проверка выхода новых серий происходит каждый день в 09:00 и 21:00"""
     db_sess = db_session.create_session()
@@ -32,8 +34,9 @@ async def command_start(message: types.Message):
         db_sess.add(user)
         db_sess.commit()
         db_sess.close()
-    await bot.send_message(message.from_user.id, f"Привет, {message.from_user.first_name}\n\n{start_message}",
-                           reply_markup=nav.mainMenu)
+    await bot.send_photo(message.from_user.id, img,
+                         caption=f"Привет, {message.from_user.first_name}\n\n{start_message}",
+                         reply_markup=nav.mainMenu)
 
 
 @dp.message_handler(commands=["ani"], state=None)
@@ -111,9 +114,15 @@ async def test3(message: types.Message, state: FSMContext):
     url = series_parser.get_url(players, num)
     headers = {"Referer": "https://aniboom.one", "Accept-Language": "ru-RU",
                "User-Agent": "Mozilla/5.0 (Macintosh; PPC Mac OS X 10_6_7 rv:6.0) Gecko/20170115 Firefox/35.0"}
-    await message.answer(
-        f"Для воспроизведения видео с AniBoom необходимо указать следующие заголовки:\n\n{headers}\n\n{url}",
-        reply_markup=nav.mainMenu)
+    # await message.answer(
+    #     f"Ссылка:\n{url}\n\nВоспроизведение по ссылке на примере плеера vlc на фото.\n\nПример заголовков для воспроизведения с AniBoom:\n{headers}",
+    #     reply_markup=nav.mainMenu)
+    media = types.MediaGroup()
+    media.attach_photo(types.InputFile("img/vlc1.png"),
+                       f"Ссылка:\n{url}\n\nВоспроизведение по ссылке на примере плеера vlc на фото.\n\nПример заголовков для воспроизведения с AniBoom:\n{headers}")
+    media.attach_photo(types.InputFile("img/vlc2.png"))
+    media.attach_photo(types.InputFile("img/vlc3.png"))
+    await bot.send_media_group(message.from_user.id, media)
     await state.finish()
 
 
