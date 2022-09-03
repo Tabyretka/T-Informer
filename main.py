@@ -188,7 +188,7 @@ async def check_titles():
             if user.urls is not None and user.urls != "":
                 res = await parse(session=session, url=user.urls.strip())
                 if res[0] != "ERROR":
-                    await bot.send_message(user.telegram_id, f"{res[0]}\n{res[1]}")
+                    await bot.send_message(user.telegram_id, f"{res[0]}\n{res[1]}", reply_markup=nav.mainMenu)
                 else:
                     user.urls = ""
                     db_sess.commit()
