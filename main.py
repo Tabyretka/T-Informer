@@ -176,7 +176,8 @@ async def other_messages(message: types.Message):
     elif "animego.org" in message.text.strip():
         await add_url(message)
     else:
-        await message.answer("Прости, но я не понимаю.", reply_markup=nav.mainMenu)
+        # await message.answer("Прости, но я не понимаю.", reply_markup=nav.mainMenu)
+        await bot.send_voice(message.from_user.id, open("audio/anime.mp3", "rb"), reply_markup=nav.mainMenu)
 
 
 async def check_titles():
