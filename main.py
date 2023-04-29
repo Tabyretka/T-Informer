@@ -8,6 +8,7 @@ import aiohttp
 import os
 import asyncio
 import aioschedule
+import aiogram.utils.markdown as fmt
 
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
@@ -33,59 +34,66 @@ async def command_start(message: types.Message):
                          caption=f"Привет, {message.from_user.first_name}\n\n{start_message}",
                          reply_markup=nav.mainMenu)
 
-
+@dp.message_handler(lambda message: message.text.startswith('http'))
 async def add_url(message: types.Message):
     url = message.text
-    if url != "":
+    async with aiohttp.ClientSession() as session:
+        res = await parse(session=session, url=url.strip())
+        if res[0] != "ERROR":
+            db_sess = db_session.create_session()
+            user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
+            user.urls = url
+            db_sess.commit()
+            db_sess.close()
+            await message.answer(f"Успешно добавлено!\n\n{res[0]}\n{res[1]}", reply_markup=nav.mainMenu)
+        else:
+            await message.answer("Проверьте ссылку! Возможно, сезон уже закончился.", reply_markup=nav.mainMenu)
+
+
+@dp.message_handler(lambda message: message.text == "Отслеживаемый тайтл")
+async def tracked_anime(message: types.Message):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
+    url = user.urls
+    if url:
         async with aiohttp.ClientSession() as session:
             res = await parse(session=session, url=url.strip())
             if res[0] != "ERROR":
-                db_sess = db_session.create_session()
-                user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
-                user.urls = url
-                db_sess.commit()
                 db_sess.close()
-                await message.answer(f"Успешно добавлено!\n\n{res[0]}\n{res[1]}", reply_markup=nav.mainMenu)
+                
+                await message.answer(
+                fmt.text(
+                fmt.text(fmt.hbold(res[0])),
+                fmt.text(res[1]),
+                fmt.text(fmt.hlink(title="ССЫЛКА", url=url)),
+                    sep="\n"
+                    ), parse_mode="HTML"
+                )
+                #await message.answer(f"{res[0]}\n{res[1]}\n{url}, reply_markup=nav.mainMenu)
             else:
-                await message.answer("Проверьте ссылку! Возможно, сезон уже закончился.", reply_markup=nav.mainMenu)
-
+                user.urls = ""
+                db_sess.commit()
+                await bot.send_message(str(user.telegram_id),
+                                       f"Не удалось получить информацию о новых сериях, возможно, сезон закончился.\n{res[0]} больше не отслеживается.",
+                                       reply_markup=nav.mainMenu)
     else:
-        await message.answer("Вы не указали ссылку!", reply_markup=nav.mainMenu)
+        await bot.send_message(message.from_user.id, "Нет аниме на отслеживании!",
+                                   reply_markup=nav.mainMenu)
+    db_sess.close()
+
+
+@dp.message_handler(lambda message: message.text == "Профиль")
+async def profile_info(message: types.Message):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
+    await message.answer(f"{message.from_user.first_name}\nid в базе: {user.id}\nОтслеживаемое аниме: {user.urls}\nПервое использование: {user.created_date}")
+    db_sess.close()
+
 
 
 @dp.message_handler()
 async def other_messages(message: types.Message):
-    if message.text == "Отслеживаемый тайтл":
-        db_sess = db_session.create_session()
-        user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
-        url = user.urls
-        if url is not None and url != "":
-            async with aiohttp.ClientSession() as session:
-                res = await parse(session=session, url=url.strip())
-                if res[0] != "ERROR":
-                    db_sess.close()
-                    await message.answer(f"Отслеживаемый тайтл:\n{res[0]}\n{res[1]}\n{url}", reply_markup=nav.mainMenu)
-                else:
-                    user.urls = ""
-                    db_sess.commit()
-                    await bot.send_message(user.telegram_id,
-                                           f"Не удалось получить информацию о новых сериях, возможно, сезон закончился. Тайтл снят с отслеживаняи.",
-                                           reply_markup=nav.mainMenu)
-        else:
-            await bot.send_message(message.from_user.id, "У вас еще нет тайтла на отслеживании!",
-                                   reply_markup=nav.mainMenu)
-        db_sess.close()
-    elif message.text == "Профиль":
-        db_sess = db_session.create_session()
-        user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
-        await message.answer(
-            f"{message.from_user.first_name}\nid в базе: {user.id}\nОтслеживаемый тайт: {user.urls}\nДобавлен в базу: {user.created_date}")
-        db_sess.close()
-    elif "animego.org" in message.text.strip():
-        await add_url(message)
-    else:
-        await message.answer("Прости, но я не понимаю.", reply_markup=nav.mainMenu)
-        # await bot.send_voice(message.from_user.id, open("audio/anime.mp3", "rb"), reply_markup=nav.mainMenu)
+    await message.answer("Прости, но я не понимаю.", reply_markup=nav.mainMenu)
 
 
 async def check_titles():
@@ -93,14 +101,23 @@ async def check_titles():
     users = db_sess.query(User).all()
     async with aiohttp.ClientSession() as session:
         for user in users:
-            if user.urls is not None and user.urls != "":
+            url = user.urls
+            if url:
                 res = await parse(session=session, url=user.urls.strip())
                 if res[0] != "ERROR":
-                    await bot.send_message(user.telegram_id, f"{res[0]}\n{res[1]}", reply_markup=nav.mainMenu)
+                    await bot.send_message(str(user.telegram_id),
+                        fmt.text(
+                        fmt.text(fmt.hbold(res[0])),
+                        fmt.text(res[1]),
+                        fmt.text(fmt.hlink(title="ССЫЛКА", url=url)),
+                            sep="\n"
+                            ), parse_mode="HTML"
+                        )
+                    # await bot.send_message(str(user.telegram_id), f"{res[0]}\n{res[1]}", reply_markup=nav.mainMenu)
                 else:
                     user.urls = ""
                     db_sess.commit()
-                    await bot.send_message(user.telegram_id,
+                    await bot.send_message(str(user.telegram_id),
                                            f"Не удалось получить информацию о новых сериях, возможно, сезон закончился. Тайтл снят с отслеживаняи.",
                                            reply_markup=nav.mainMenu)
     db_sess.close()
