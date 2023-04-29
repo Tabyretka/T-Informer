@@ -1,6 +1,6 @@
 from aiogram import Bot, executor, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from data import db_session, markups as nav
+from data import db_session
 from data.users import User
 from data.dateparser import parse
 from config import TOKEN
