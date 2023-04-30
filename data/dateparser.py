@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup as Bs
 
 
-async def parse(session, url: str) -> list:
+async def parse(session, url: str):
     headers = {
         "user-agent": "Mozilla/5.0 (Windows NT 6.3; WOW64; rv:36.0) Gecko/20100101 Firefox/36.0"
     }
@@ -18,12 +18,10 @@ async def parse(session, url: str) -> list:
                     date2 = data.get('data-title').strip()
                     info = dd.find('span', class_='d-none d-sm-inline').text.strip()
                     data = f"{date1} ({date2}) {info}"
-                    return [title_name, data]
+                    return title_name, data
                 else:
-                    return ['ERROR',
-                            'Could not get information about new episodes, check the link, the season may have already ended!']
+                    return
             else:
-                return ['ERROR',
-                        'Could not get information about new episodes, check the link, the season may have already ended!']
-    except Exception as e:
-        return ["ERROR", e]
+                return 
+    except Exception:
+        return

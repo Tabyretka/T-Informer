@@ -37,7 +37,7 @@ async def add_url(message: types.Message):
     url = message.text
     async with aiohttp.ClientSession() as session:
         res = await parse(session=session, url=url.strip())
-        if res[0] != "ERROR":
+        if res:
             db_sess = db_session.create_session()
             user = db_sess.query(User).filter(User.telegram_id == message.from_user.id).first()
             user.urls = url
@@ -56,7 +56,7 @@ async def tracked_anime(message: types.Message):
     if url:
         async with aiohttp.ClientSession() as session:
             res = await parse(session=session, url=url.strip())
-            if res[0] != "ERROR":
+            if res:
                 db_sess.close()
                 
                 await message.answer(
@@ -102,7 +102,7 @@ async def check_titles():
             url = user.urls
             if url:
                 res = await parse(session=session, url=user.urls.strip())
-                if res[0] != "ERROR":
+                if res:
                     await bot.send_message(str(user.telegram_id),
                         fmt.text(
                         fmt.text(fmt.hbold(res[0])),
