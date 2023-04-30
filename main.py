@@ -1,18 +1,16 @@
 from aiogram import Bot, executor, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from data import db_session, markups as nav
 from data.users import User
 from data.dateparser import parse
-from config import TOKEN
+from misc.env import TgKeys
 import aiohttp
 import os
 import asyncio
 import aioschedule
 import aiogram.utils.markdown as fmt
 
-bot = Bot(token=TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
+bot = Bot(token=TgKeys.TOKEN)
+dp = Dispatcher(bot)
 
 #жестчайший говнокод
 
@@ -136,7 +134,6 @@ async def on_startup(_):
 
 
 async def shutdown(dp):
-    await storage.close()
     await bot.close()
 
 
